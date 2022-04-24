@@ -217,7 +217,7 @@
                 {{ t.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ t.price }}
+                {{ formatPrice(t.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -303,6 +303,8 @@
 </template>
 
 <script>
+import { subscribeToTicker, unsubscribeToTicker } from "./api";
+
 export default {
   name: "App",
 
@@ -330,8 +332,11 @@ export default {
 
     if (localStorageTickersList) {
       this.tickers = JSON.parse(localStorageTickersList);
+
       this.tickers.forEach((ticker) => {
-        this.subscribeToUpdate(ticker.name);
+        subscribeToTicker(ticker.name, (newPrice) =>
+          this.updateTicker(ticker.name, newPrice)
+        );
       });
     }
 
@@ -349,12 +354,23 @@ export default {
   },
 
   methods: {
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter((t) => t.name === tickerName)
+        .forEach((t) => {
+          if (t === this.selectedTicker) {
+            this.graph.push(price);
+          }
+          t.price = price;
+        });
+    },
     addTicker() {
       if (!this.checkRepeatTicker) {
         this.tickers = [...this.tickers, this.newTicker];
+        subscribeToTicker(this.newTicker.name, (newPrice) =>
+          this.updateTicker(this.newTicker.name, newPrice)
+        );
         this.ticker = "";
-
-        this.subscribeToUpdate(this.newTicker.name);
       }
 
       this.filter = "";
@@ -369,23 +385,17 @@ export default {
       if (this.selectedTicker === thisTicker) {
         this.selectedTicker = null;
       }
+      unsubscribeToTicker(thisTicker.name);
     },
     selectTicker(ticker) {
       this.selectedTicker = ticker;
     },
-    subscribeToUpdate(tickerName) {
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD`
-        );
-        let data = await f.json();
-        this.tickers.find((ticker) => ticker.name === tickerName).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+    formatPrice(price) {
+      if (typeof price === "string") {
+        return price;
+      }
 
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },
   },
 
